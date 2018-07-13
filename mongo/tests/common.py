@@ -6,8 +6,10 @@ PORT1 = 47017
 PORT2 = 47018
 MAX_WAIT = 150
 
+MONGODB_SERVER = "mongodb://%s:%s/test" % (HOST, PORT1)
+
 MONGODB_CONFIG = {
-    'server': "mongodb://%s:%s/test" % (HOST, PORT1)
+    'server': MONGODB_SERVER
 }
 
 HERE = os.path.dirname(os.path.abspath(__file__))
