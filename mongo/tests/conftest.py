@@ -14,7 +14,7 @@ from datadog_checks.mongo import MongoDb
 
 from . import common
 
-log = logging.getLogger('test_mongo')
+log = logging.getLogger('conftest')
 
 
 @pytest.fixture
@@ -37,6 +37,11 @@ def set_up_mongo():
         socketTimeoutMS=30000,
         read_preference=pymongo.ReadPreference.PRIMARY_PREFERRED,)
 
+    cli2 = pymongo.mongo_client.MongoClient(
+        common.MONGODB_SERVER2,
+        socketTimeoutMS=30000,
+        read_preference=pymongo.ReadPreference.PRIMARY_PREFERRED,)
+
     foos = []
     for _ in range(70):
         foos.append({'1': []})
@@ -52,8 +57,14 @@ def set_up_mongo():
     db.foo.insert_many(foos)
     db.bar.insert_many(bars)
 
+
+    authDB = cli['authDB']
+    authDB.command("createUser", 'testUser', pwd='testPass', roles=[ { 'role': 'read', 'db': 'test' } ])
+
+    db.command("createUser", 'testUser2', pwd='testPass2', roles=[ { 'role': 'read', 'db': 'test' } ])
+
     yield
-    tear_down()
+    tear_down_mongo()
 
 
 def tear_down_mongo():
@@ -79,40 +90,40 @@ def spin_up_mongo():
 
     env = os.environ
 
+    compose_file = os.path.join(common.HERE, 'compose', 'docker-compose.yml')
+
+    env['DOCKER_COMPOSE_FILE'] = compose_file
+
     args = [
         "docker-compose",
-        "-f", os.path.join(common.HERE, 'compose', 'docker-compose.yml')
+        "-f", compose_file
     ]
+
+    try:
+        cleanup_mongo(args, env)
+    except Exception:
+        pass
 
     try:
         subprocess.check_call(args + ["up", "-d"], env=env)
         compose_dir = os.path.join(common.HERE, 'compose')
         script_path = os.path.join(common.HERE, 'compose', 'init.sh')
-        setup_sharding()
+        setup_sharding(env=env)
     except Exception:
-        cleanup_mongo(args, env)
+        # cleanup_mongo(args, env)
         raise
 
     yield
-    cleanup_mongo(args, env)
+    # cleanup_mongo(args, env)
 
 
-def setup_sharding():
+def setup_sharding(env=None):
     curdir = os.getcwd()
     compose_dir = os.path.join(common.HERE, 'compose')
     os.chdir(compose_dir)
-    for i in xrange(40):
-        try:
-            subprocess.check_call(['docker-compose', 'exec', 'config01', 'sh -c "mongo --port 27017 < /scripts/init-configserver.js"'])
-            subprocess.check_call(['docker-compose', 'exec', 'config01', 'sh', '-c', "'mongo --port 27017 < /scripts/init-configserver.js'"])
-            subprocess.check_call(['docker-compose', 'exec', 'shard01a', 'sh', '-c', "'mongo --port 27018 < /scripts/init-shard01.js'"])
-            subprocess.check_call(['docker-compose', 'exec', 'shard02a', 'sh', '-c', "'mongo --port 27019 < /scripts/init-shard02.js'"])
-            subprocess.check_call(['docker-compose', 'exec', 'shard03a', 'sh', '-c', "'mongo --port 27020 < /scripts/init-shard03.js'"])
-            subprocess.check_call(['docker-compose', 'exec', 'router', 'sh', '-c', "'mongo < /scripts/init-router.js'"])
-            os.chdir(curdir)
-            return
-        except Exception:
-            time.sleep(5)
+    subprocess.check_call(['bash', 'init.sh'], env=env)
+    os.chdir(curdir)
+    return
 
 
 def cleanup_mongo(args, env):

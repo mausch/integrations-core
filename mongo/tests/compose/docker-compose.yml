@@ -22,6 +22,8 @@ services:
   shard01a:
     image: mongo:$MONGO_VERSION
     command: mongod --port 27018 --shardsvr --replSet shard01 --noprealloc --smallfiles --oplogSize 16
+    ports:
+      - "27018:27018"
     volumes:
       - ./scripts:/scripts
   shard01b:
